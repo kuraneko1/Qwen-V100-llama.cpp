@@ -824,6 +824,8 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
             }
         }
 
+        res_hc = build_cvec_hc(res_hc, il);
+
         // "l_last" is the layer output name that build_cvec and imatrix look for
         cb(res_hc, "l_last", il);
     }

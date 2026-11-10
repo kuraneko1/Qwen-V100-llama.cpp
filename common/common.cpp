@@ -1481,16 +1481,23 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
             return res;
         }
 
-        int err = llama_set_adapter_cvec(
+        int err = llama_set_adapter_cvec_ex(
                 lctx,
                 cvec.data.data(),
                 cvec.data.size(),
                 cvec.n_embd,
                 params.control_vector_layer_start,
-                params.control_vector_layer_end);
+                params.control_vector_layer_end,
+                params.control_vector_mode,
+                params.control_vector_layer_single);
         if (err) {
             return res;
         }
+
+        COM_INF("%s: control vector mode = %s, dir = %s, layers %d..%d\n", __func__,
+                params.control_vector_mode == LLAMA_CVEC_MODE_PROJECT ? "project" : "add",
+                params.control_vector_layer_single >= 1 ? "single" : "per-layer",
+                params.control_vector_layer_start, params.control_vector_layer_end);
     }
 
     if (llama_pooling_type(lctx) == LLAMA_POOLING_TYPE_RANK) {

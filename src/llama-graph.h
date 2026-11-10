@@ -1100,6 +1100,11 @@ struct llm_graph_context {
              ggml_tensor * cur,
                      int   il) const;
 
+    // control vector on a hyper-connection residual [n_embd, hc, n_tokens]
+    ggml_tensor * build_cvec_hc(
+             ggml_tensor * res,
+                     int   il) const;
+
     // do mat_mul, while optionally apply lora and per-tensor scale
     ggml_tensor * build_lora_mm(
               ggml_tensor * w,

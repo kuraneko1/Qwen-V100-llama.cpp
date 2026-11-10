@@ -1527,6 +1527,12 @@ ggml_tensor * llm_graph_context::build_cvec(
     return cvec->apply_to(ctx0, cur, il);
 }
 
+ggml_tensor * llm_graph_context::build_cvec_hc(
+         ggml_tensor * res,
+                 int   il) const {
+    return cvec->apply_to_hc(ctx0, res, il);
+}
+
 ggml_tensor * llm_graph_context::build_lora_mm(
           ggml_tensor * w,
           ggml_tensor * cur,

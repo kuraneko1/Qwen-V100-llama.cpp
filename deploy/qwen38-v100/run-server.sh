@@ -1,7 +1,9 @@
 #!/bin/bash
 # qwen38-v100 launcher: llama-server for Qwen3.8-Flash-Next-IQ3E-Q8D-MTP on 2x V100 32 GB with the measured settings.
 # Required: QWEN38_MODEL (the .gguf). Optional (defaults below): QWEN38_MMPROJ, QWEN38_HOST, QWEN38_PORT, QWEN38_CTX,
-# QWEN38_IMAGE_MAX_TOKENS (0 = no cap), QWEN38_CACHE_DIR, QWEN38_NUMA_NODE (empty = no binding), LLAMA_SERVER. Extra llama-server arguments: pass them to this script.
+# QWEN38_IMAGE_MAX_TOKENS (0 = no cap), QWEN38_CACHE_DIR, QWEN38_NUMA_NODE (empty = no binding), LLAMA_SERVER,
+# QWEN38_CVEC (control vector GGUF, empty = off), QWEN38_CVEC_LAYERS ("START END"), QWEN38_CVEC_SCALE.
+# Extra llama-server arguments: pass them to this script.
 # Default: 262K context; with QWEN38_MMPROJ set, use the Q8_0 projector made by tools/mmproj_q8.py (the F16 one does not fit at 262K).
 set -euo pipefail
 QWEN38_DEPLOY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,6 +17,9 @@ QWEN38_CTX="${QWEN38_CTX:-262144}"
 QWEN38_CACHE_DIR="${QWEN38_CACHE_DIR:-$HOME/.cache/qwen38}"
 QWEN38_NUMA_NODE="${QWEN38_NUMA_NODE-0}"
 LLAMA_SERVER="${LLAMA_SERVER:-$REPO/build/bin/llama-server}"
+QWEN38_CVEC="${QWEN38_CVEC:-}"
+QWEN38_CVEC_LAYERS="${QWEN38_CVEC_LAYERS:-4 44}"
+QWEN38_CVEC_SCALE="${QWEN38_CVEC_SCALE:-1.0}"
 export QWEN38_DEPLOY QWEN38_CACHE_DIR
 mkdir -p "$QWEN38_CACHE_DIR/pc-disk"
 set -a; . "$QWEN38_DEPLOY/qwen38.env"; set +a
@@ -34,6 +39,14 @@ if [ -n "$QWEN38_NUMA_NODE" ] && command -v numactl >/dev/null; then
   numa=(numactl --cpunodebind="$QWEN38_NUMA_NODE")           # CPU threads next to CUDA0; --membind is not allowed in some containers
 fi
 
+cvec=()
+if [ -n "$QWEN38_CVEC" ]; then
+  read -r cvec_first cvec_last <<<"$QWEN38_CVEC_LAYERS"
+  cvec=(--control-vector-scaled "$QWEN38_CVEC:$QWEN38_CVEC_SCALE"
+        --control-vector-layer-range "$cvec_first" "$cvec_last"
+        --cvec-mode project --cvec-dir per-layer)            # refusal-direction projection on every HC stream
+fi
+
 exec "${numa[@]}" "$LLAMA_SERVER" \
   --model "$QWEN38_MODEL" "${vision[@]}" \
   --host "$QWEN38_HOST" --port "$QWEN38_PORT" --alias qwen3.8-flash-next \
@@ -43,4 +56,5 @@ exec "${numa[@]}" "$LLAMA_SERVER" \
   --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 --load-mode mmap \
   --cache-ram 4096 --ctx-checkpoints 24 --checkpoint-min-step 2048 \
   --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-sampling probabilistic --jinja \
+  "${cvec[@]}" \
   "$@"

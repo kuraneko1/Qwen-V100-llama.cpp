@@ -541,6 +541,8 @@ struct common_params {
     int32_t verbosity                  = 3;  // LOG_LEVEL_INFO
     int32_t control_vector_layer_start = -1; // layer range for control vector
     int32_t control_vector_layer_end   = -1; // layer range for control vector
+    int32_t control_vector_mode        = LLAMA_CVEC_MODE_ADD; // project or add
+    int32_t control_vector_layer_single = -1; // project mode: one layer's direction for all
     bool    offline                    = false;
 
     int32_t ppl_stride      = 0;     // stride for perplexity calculations. If left at 0, the pre-existing approach will be used.

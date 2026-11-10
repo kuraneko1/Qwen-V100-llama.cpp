@@ -1645,10 +1645,12 @@ bool llama_context::set_adapter_cvec(
                  size_t   len,
                 int32_t   n_embd,
                 int32_t   il_start,
-                int32_t   il_end) {
-    LLAMA_LOG_DEBUG("%s: il_start = %d, il_end = %d\n", __func__, il_start, il_end);
+                int32_t   il_end,
+                int32_t   mode,
+                int32_t   il_single) {
+    LLAMA_LOG_DEBUG("%s: il_start = %d, il_end = %d, mode = %d\n", __func__, il_start, il_end, mode);
 
-    bool res = cvec->apply(model, data, len, n_embd, il_start, il_end);
+    bool res = cvec->apply(model, data, len, n_embd, il_start, il_end, mode, il_single);
 
     sched_need_reserve = true;
 
@@ -5414,8 +5416,20 @@ int32_t llama_set_adapter_cvec(
               int32_t   n_embd,
               int32_t   il_start,
               int32_t   il_end) {
+    return llama_set_adapter_cvec_ex(ctx, data, len, n_embd, il_start, il_end, LLAMA_CVEC_MODE_ADD, -1);
+}
+
+int32_t llama_set_adapter_cvec_ex(
+        llama_context * ctx,
+          const float * data,
+               size_t   len,
+              int32_t   n_embd,
+              int32_t   il_start,
+              int32_t   il_end,
+              int32_t   mode,
+              int32_t   il_single) {
     llama_mtp_async_guard(ctx, __func__); // [mtp-async]
-    bool res = ctx->set_adapter_cvec(data, len, n_embd, il_start, il_end);
+    bool res = ctx->set_adapter_cvec(data, len, n_embd, il_start, il_end, mode, il_single);
 
     return res ? 0 : -1;
 }

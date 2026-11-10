@@ -7,6 +7,7 @@
 #include <map>
 #include <cassert>
 #include <cerrno>
+#include <cmath>
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
@@ -28,6 +29,38 @@ ggml_tensor * llama_adapter_cvec::apply_to(ggml_context * ctx, ggml_tensor * cur
     }
 
     return cur;
+}
+
+// project: h <- h - s (h . v) v on every stream; add: h <- h + d on every stream
+ggml_tensor * llama_adapter_cvec::apply_to_hc(ggml_context * ctx, ggml_tensor * res, int il) const {
+    if (res == nullptr || il < layer_start || il > layer_end) {
+        return res;
+    }
+
+    const int32_t il_src = mode == LLAMA_CVEC_MODE_PROJECT && layer_single >= 1 ? layer_single : il;
+
+    ggml_tensor * dir = (size_t) il_src < tensors.size() ? tensors[il_src] : nullptr;
+    const float   s   = (size_t) il_src < scales.size()  ? scales[il_src] : 0.0f;
+    if (dir == nullptr || s == 0.0f) {
+        return res;
+    }
+
+    const int64_t n_embd = res->ne[0];
+    const int64_t hc     = res->ne[1];
+    const int64_t nt     = res->ne[2]*res->ne[3];
+
+    if (mode == LLAMA_CVEC_MODE_ADD) {
+        return ggml_add(ctx, res, ggml_repeat_4d(ctx, dir, n_embd, hc, res->ne[2], res->ne[3]));
+    }
+
+    // [n_embd, hc*nt] -> dot with v -> v * dot, subtracted
+    ggml_tensor * base = ggml_is_contiguous(res) ? res : ggml_cont(ctx, res);
+    ggml_tensor * r2   = ggml_reshape_2d(ctx, base, n_embd, hc*nt);
+    ggml_tensor * dot  = ggml_mul_mat(ctx, dir, r2);                                    // [1, hc*nt]
+    ggml_tensor * proj = ggml_mul_mat(ctx, ggml_reshape_2d(ctx, dir, 1, n_embd), dot);  // [n_embd, hc*nt]
+    ggml_tensor * out  = ggml_sub(ctx, r2, ggml_scale(ctx, proj, s));
+
+    return ggml_reshape_4d(ctx, out, n_embd, hc, res->ne[2], res->ne[3]);
 }
 
 bool llama_adapter_cvec::init(const llama_model & model) {
@@ -99,7 +132,9 @@ bool llama_adapter_cvec::apply(
         size_t len,
         int32_t n_embd,
         int32_t il_start,
-        int32_t il_end) {
+        int32_t il_end,
+        int32_t mode,
+        int32_t il_single) {
     const auto & hparams = model.hparams;
 
     if (data == nullptr) {
@@ -120,9 +155,14 @@ bool llama_adapter_cvec::apply(
         }
     }
 
-    layer_start = il_start;
-    layer_end   = il_end;
+    layer_start  = il_start;
+    layer_end    = il_end;
+    this->mode   = mode;
+    layer_single = mode == LLAMA_CVEC_MODE_PROJECT ? il_single : -1;
 
+    scales.assign(hparams.n_layer(), 0.0f);
+
+    std::vector<float> tmp(n_embd, 0.0f);
     for (size_t il = 1; il < hparams.n_layer(); il++) {
         assert(tensors[il] != nullptr);
 
@@ -130,7 +170,47 @@ bool llama_adapter_cvec::apply(
         if (off + n_embd <= len) {
             ggml_backend_tensor_set(tensors[il], data + off, 0, n_embd * ggml_element_size(tensors[il]));
         }
+
+        ggml_backend_tensor_get(tensors[il], tmp.data(), 0, n_embd * sizeof(float));
+
+        double nrm = 0.0;
+        for (int32_t j = 0; j < n_embd; j++) {
+            nrm += (double) tmp[j] * tmp[j];
+        }
+        nrm = std::sqrt(nrm);
+        if (nrm == 0.0) {
+            continue; // no direction for this layer
+        }
+
+        if (mode == LLAMA_CVEC_MODE_PROJECT) {
+            for (int32_t j = 0; j < n_embd; j++) {
+                tmp[j] = (float) (tmp[j] / nrm);
+            }
+            ggml_backend_tensor_set(tensors[il], tmp.data(), 0, n_embd * sizeof(float));
+            scales[il] = (float) nrm;
+        } else {
+            scales[il] = 1.0f;
+        }
     }
+
+    if (layer_single >= 1) {
+        if ((size_t) layer_single >= scales.size()) {
+            LLAMA_LOG_ERROR("%s: no layer %d in the control vector\n", __func__, layer_single);
+            return false;
+        }
+        if (scales[layer_single] == 0.0f) {
+            LLAMA_LOG_ERROR("%s: control vector has no direction for layer %d\n", __func__, layer_single);
+            return false;
+        }
+    }
+
+    int steered = 0;
+    for (size_t il = 1; il < scales.size(); il++) {
+        if (scales[il] != 0.0f) {
+            steered++;
+        }
+    }
+    LLAMA_LOG_INFO("%s: %d of %zu layers have a direction, mode = %d\n", __func__, steered, scales.size(), (int) mode);
 
     return true;
 }

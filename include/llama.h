@@ -727,6 +727,11 @@ extern "C" {
             size_t n_adapters,
             float * scales);
 
+    enum llama_cvec_mode {
+        LLAMA_CVEC_MODE_PROJECT = 0, // h <- h - s (h . v) v, v unit
+        LLAMA_CVEC_MODE_ADD     = 1, // h <- h + d
+    };
+
     // Apply a loaded control vector to a llama_context, or if data is NULL, clear
     // the currently loaded vector.
     // n_embd should be the size of a single layer's control, and data should point
@@ -740,6 +745,21 @@ extern "C" {
                          int32_t   n_embd,
                          int32_t   il_start,
                          int32_t   il_end);
+
+    // As llama_set_adapter_cvec, with the mode of the cvec projection package:
+    // PROJECT subtracts the projection of the (unit) direction from every
+    // residual stream, ADD is the stock h += d.
+    // il_single >= 1: use that layer's direction for every layer in the range
+    // (project mode only).
+    LLAMA_API int32_t llama_set_adapter_cvec_ex(
+            struct llama_context * ctx,
+                     const float * data,
+                          size_t   len,
+                         int32_t   n_embd,
+                         int32_t   il_start,
+                         int32_t   il_end,
+                         int32_t   mode,
+                         int32_t   il_single);
 
     //
     // Memory

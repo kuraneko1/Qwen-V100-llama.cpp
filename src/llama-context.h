@@ -140,7 +140,9 @@ struct llama_context {
                  size_t   len,
                 int32_t   n_embd,
                 int32_t   il_start,
-                int32_t   il_end);
+                int32_t   il_end,
+                int32_t   mode        = LLAMA_CVEC_MODE_ADD,
+                int32_t   il_single   = -1);
 
     // process a single ubatch with a specific graph type
     // if memory_context is provided, it will be applied first to the context's memory

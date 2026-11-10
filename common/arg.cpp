@@ -3028,6 +3028,33 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ));
     add_opt(common_arg(
+        {"--cvec-mode"}, "add|project",
+        "control vector mode: h += d (add, default) or h -= s (h . v) v (project)",
+        [](common_params & params, const std::string & value) {
+            if (value == "add") {
+                params.control_vector_mode = LLAMA_CVEC_MODE_ADD;
+            } else if (value == "project") {
+                params.control_vector_mode = LLAMA_CVEC_MODE_PROJECT;
+            } else {
+                throw std::invalid_argument("cvec-mode: add or project");
+            }
+        }
+    ));
+    add_opt(common_arg(
+        {"--cvec-dir"}, "per-layer|single:L",
+        "control vector direction: each layer's own (default), or layer L's for all (project mode)",
+        [](common_params & params, const std::string & value) {
+            if (value == "per-layer") {
+                params.control_vector_layer_single = -1;
+                return;
+            }
+            if (value.rfind("single:", 0) != 0) {
+                throw std::invalid_argument("cvec-dir: per-layer or single:L");
+            }
+            params.control_vector_layer_single = std::stoi(value.substr(7));
+        }
+    ));
+    add_opt(common_arg(
         {"-a", "--alias"}, "STRING",
         "set model name aliases, comma-separated (to be used by API)",
         [](common_params & params, const std::string & value) {

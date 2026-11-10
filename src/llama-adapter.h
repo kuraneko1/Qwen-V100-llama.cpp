@@ -19,19 +19,28 @@ struct llama_adapter_cvec {
 
     ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int  il) const;
 
+    // apply to a hyper-connection residual [n_embd, hc, n_tokens]: every stream
+    ggml_tensor * apply_to_hc(ggml_context * ctx, ggml_tensor * res, int il) const;
+
     bool apply(
             const llama_model & model,
             const float * data,
             size_t len,
             int32_t n_embd,
             int32_t il_start,
-            int32_t il_end);
+            int32_t il_end,
+            int32_t mode = LLAMA_CVEC_MODE_ADD,
+            int32_t il_single = -1);
 
 private:
     bool init(const llama_model & model);
 
-    int32_t layer_start = -1;
-    int32_t layer_end   = -1;
+    int32_t layer_start  = -1;
+    int32_t layer_end    = -1;
+    int32_t mode         = LLAMA_CVEC_MODE_ADD;
+    int32_t layer_single = -1;
+
+    std::vector<float> scales; // per layer: project = |d|, add = 1; 0 = no direction
 
     std::vector<ggml_context_ptr> ctxs;
     std::vector<ggml_backend_buffer_ptr> bufs;
