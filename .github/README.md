@@ -25,10 +25,26 @@ Two V100-SXM2-32GB cards, layer split, 200 W cap. Full method and more numbers:
 - **Images:** 1.1 s for 640x360, 3.2 s for 1920x1080.
 - **Prompt cache:** a follow-up turn on a long chat re-prefills only the new tokens.
 
+## Uncensored mode (control vector)
+
+`llama-server` accepts the same refusal-direction control vector the [Strata](https://github.com/Niko1221/Strata)
+engine uses. On the qwen4exp graph, `--cvec-mode project` subtracts the unit direction from every
+hyper-connection residual stream right after each layer's FFN combine, and `--cvec-dir per-layer` uses
+each layer's own direction. `--control-vector-layer-range 4 44` is the range the vector was made for.
+
+```sh
+QWEN38_CVEC=/path/to/Qwen3.8-Flash-Next-experimental-speed-projection.gguf \
+  deploy/qwen38-v100/run-server.sh      # adds --cvec-mode project --cvec-dir per-layer --control-vector-layer-range 4 44
+```
+
+`--cvec-mode add` is the default and the stock additive behaviour. The vector is not part of this
+repository: it is a 480 KB GGUF holding `direction.1` .. `direction.47`. It removes refusals, so the
+output is your responsibility.
+
 ## Quick start
 
 ```sh
-git clone -b qwen38-v100 https://github.com/pentaCoxian/Qwen-V100-llama.cpp && cd Qwen-V100-llama.cpp
+git clone -b qwen38-v100 https://github.com/kuraneko1/Qwen-V100-llama.cpp && cd Qwen-V100-llama.cpp
 cmake -B build -G Ninja -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=70 -DGGML_SCHED_MAX_COPIES=2 -DGGML_CUDA_NCCL=ON \
       -DCMAKE_BUILD_TYPE=Release -DCUDAToolkit_ROOT=/usr/local/cuda-12.9      # CUDA 12.x: CUDA 13 dropped sm_70
 cmake --build build -j --target llama-server
